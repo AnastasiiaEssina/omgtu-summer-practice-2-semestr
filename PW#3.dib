@@ -35,6 +35,7 @@
 //
 // Вычисление определенного интеграла
 //
+using System.Threading;
 class DefiniteIntegral
 {
     //
@@ -45,8 +46,49 @@ class DefiniteIntegral
     //
     public static double Solve(double a, double b, Func<double, double> function, double step, int threadsnumber)
     {
-        // отсюда надо начинать реализацию задачи
-        return 0.0;
+        double segmentSize = (b - a) / threadsnumber;
+        var barrier = new Barrier(threadsnumber + 1);
+        double result = 0.0;
+
+        for (int i = 0; i < threadsnumber; i++)
+        {
+            double start = a + i * segmentSize;
+            double end = start + segmentSize;
+
+            new Thread(() =>
+            {
+                double localResult = SubSolve(start, end, function, step);
+                doubleAdd(ref result, localResult);
+                barrier.SignalAndWait();
+            }).Start();
+        }
+        barrier.SignalAndWait();
+
+        return result;
+    }
+
+
+    private static void doubleAdd(ref double finalRes, double value)
+    {
+        double c;
+        double d = finalRes;
+        do
+        {
+            c = d + value;
+        }
+        while (Interlocked.CompareExchange(ref finalRes, c, d) != d);
+    }
+
+
+    // Вычисление интеграла на отрезке
+    private static double SubSolve(double start, double end, Func<double, double> function, double step)
+    {
+        double sum = 0.0;
+        for (double i = start; i < end - step; i += step)
+        {
+            sum += (function(i) + function(i + step)) / 2.0 * step;
+        }
+        return sum;
     }
 }
 
