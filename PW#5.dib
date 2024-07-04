@@ -57,10 +57,40 @@ class Message
 
 using System.Collections.Concurrent;
 
-var queue1 = new BlockingCollection<Message>(2); //очередь первого потока
-var queue2 = new BlockingCollection<Message>(2); //очередь второго потока
+public void PingPong()
+{
+    var queue1 = new BlockingCollection<Message>(2); //очередь первого потока
+    var queue2 = new BlockingCollection<Message>(2); //очередь второго потока
 
-// Здесь писать решение
+    var thread1 = new Thread(() =>
+    {
+        for (int i = 0; i < 100; i++)
+        {
+            Message message = queue1.Take();    //чтение объекта из очереди
+            message.Handle();   //Обработка сообщения
+            queue2.Add(new Message());  //  создание нового сообщения Message и добавление его в очередь другого потока.
+        }
+    });
+
+    var thread2 = new Thread(() =>
+    {
+        for (int i = 0; i < 100; i++)
+        {
+            Message message = queue2.Take();    //чтение объекта из очереди
+            message.Handle();   //Обработка сообщения
+            queue1.Add(new Message());  //  создание нового сообщения Message и добавление его в очередь другого потока.
+        }
+    });
+
+    thread1.Start();
+    thread2.Start();
+
+    queue1.Add(new Message()); // Запуск процесса обмена
+
+    thread1.Join(); //ожидание завершения
+    thread2.Join(); 
+}
+
 
 #!csharp
 
