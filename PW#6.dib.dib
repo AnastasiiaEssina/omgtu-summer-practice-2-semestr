@@ -37,10 +37,344 @@
 Для этого следует использовать условные события, которые позволят убедиться, что оба потока запустились и готовы читать и писать объекты и только потом запускать таймер.
 2. Для итогового вывода сравнивать усредненные значения.
 
-#!markdown
+#!csharp
 
-// здесь писать код
+using System;
+using System.Collections.Concurrent;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Diagnostics;
+
+#!csharp
+
+#r "nuget: xunit, 2.8.1"
+using Xunit;
+class Message
+{
+    int id;
+    public Message()
+    {
+        id = Thread.CurrentThread.ManagedThreadId;
+    }
+}
+
+#!csharp
+
+//запись и чтение миллиона объектов из очреди.
+using System.Diagnostics;
+int n = 1_000_000;
+long[] mas_b = new long[10];
+for (int k = 0; k < 10; k++){
+    BlockingCollection<Message> queue1 = new BlockingCollection<Message>();    //создание очереди
+    // Событие, указывающее, что оба потока готовы к работе
+    ManualResetEventSlim writeReady1 = new ManualResetEventSlim(false);
+    ManualResetEventSlim readReady1 = new ManualResetEventSlim(false);
+
+    Stopwatch writeTimer1 = new Stopwatch();
+    Task writeTask1 = Task.Run(()=> 
+    {
+        // Сигнализируем о готовности потока записи
+        writeReady1.Set();
+        for (int i = 0; i < n; i++)
+        {
+            Message message = new Message();
+            queue1.Add (message);
+        }
+    });
+    
+    Task readTask1 = Task.Run(()=>
+    {
+        // Сигнализируем о готовности потока чтения
+        readReady1.Set();
+        for (int i = 0; i < n; i++)
+        {
+            var leter = queue1.Take(); 
+        }
+    }
+    );
+    // Ждем, пока оба потока не будут готовы
+    WaitHandle.WaitAll(new WaitHandle[] { writeReady1.WaitHandle, readReady1.WaitHandle });
+
+    // Запускаем таймер после того, как оба потока готовы
+    writeTimer1.Start();
+
+    Task.WaitAll(writeTask1, readTask1);
+    writeTimer1.Stop();
+    
+    mas_b[k] = writeTimer1.ElapsedMilliseconds;
+}
+
+long[] mas_c = new long[10];
+for (int k = 0; k < 10; k++){
+    ConcurrentQueue<Message> queue2 = new ConcurrentQueue<Message>();
+
+    ManualResetEventSlim writeReady2 = new ManualResetEventSlim(false);
+    ManualResetEventSlim readReady2 = new ManualResetEventSlim(false);
+
+    Stopwatch writeTimer2 = new Stopwatch();
+    
+    Task writeTask2 = Task.Run(() =>
+    {
+        writeReady2.Set();
+        for (int i = 0; i < n; i++)
+        {
+            Message message = new Message();
+            queue2.Enqueue(message); 
+        }
+    });
+
+    Task readTask2 = Task.Run(() =>
+    {
+        readReady2.Set();
+        for (int i = 0; i < n; i++)
+        {
+            var item = new Message();
+            queue2.TryDequeue(out item);
+        }
+    });
+    WaitHandle.WaitAll(new WaitHandle[] { writeReady2.WaitHandle, readReady2.WaitHandle });
+    writeTimer2.Start();
+    Task.WaitAll(writeTask2, readTask2);
+
+    writeTimer2.Stop();
+
+    mas_c[k] = writeTimer2.ElapsedMilliseconds;
+}
+
+long[] mas_q = new long[10];
+for (int k = 0; k < 10; k++){
+    Queue<Message> queue3 = new Queue<Message>();
+
+    Stopwatch writeTimer3 = new Stopwatch();
+    writeTimer3.Start();
+    for (int i = 0; i < n; i++)
+    {
+        Message message = new Message();
+        queue3.Enqueue(message);
+    }
+    writeTimer3.Stop();
+
+    Stopwatch readTimer3 = new Stopwatch();
+    readTimer3.Start();
+
+    for (int i = 0; i < n; i++)
+    {
+        queue3.Dequeue();
+    }
+    readTimer3.Stop();
+
+    mas_q[k] = writeTimer3.ElapsedMilliseconds + readTimer3.ElapsedMilliseconds ;
+
+}
+
+#!csharp
+
+//обработка миллиона объектов.
+using System.Diagnostics;
+int n = 1_000_000;
+long[] mas_bp = new long[10];
+for (int k = 0; k < 10; k++){
+    BlockingCollection<Message> queue1 = new BlockingCollection<Message>();    
+
+    ManualResetEventSlim writeReady1 = new ManualResetEventSlim(false);
+    ManualResetEventSlim readReady1 = new ManualResetEventSlim(false);
+
+    Task writeTask1 = Task.Run(()=> 
+    {
+        writeReady1.Set();
+        for (int i = 0; i < n; i++)
+        {
+            var message = new Message();
+            queue1.Add(message);
+        }
+    });
+
+    Stopwatch readTimer1 = new Stopwatch();
+    Task readTask1 = Task.Run(()=>
+    {
+        readReady1.Set();
+        for (int i = 0; i < n; i++)
+        {
+            var leter = queue1.Take(); 
+        }
+    }
+    );
+
+    WaitHandle.WaitAll(new WaitHandle[] { readReady1.WaitHandle });
+    
+    readTimer1.Start();
+
+    Task.WaitAll(readTask1);
+    readTimer1.Stop();
+
+    mas_bp[k] = readTimer1.ElapsedMilliseconds;
+}
+
+long[] mas_cp = new long[10];
+for (int k = 0; k < 10; k++){
+    ConcurrentQueue<Message> queue2 = new ConcurrentQueue<Message>();
+
+    ManualResetEventSlim writeReady2 = new ManualResetEventSlim(false);
+    ManualResetEventSlim readReady2 = new ManualResetEventSlim(false);
+
+    Task writeTask2 = Task.Run(() =>
+    {
+        writeReady2.Set();
+        for (int i = 0; i < n; i++)
+        {
+            var message = new Message();
+            queue2.Enqueue(message); 
+        }
+    });
+    Stopwatch readTimer2 = new Stopwatch();
+    Task readTask2 = Task.Run(() =>
+    {
+        readReady2.Set();
+        for (int i = 0; i < n; i++)
+        {
+            var message = new Message();
+            queue2.TryDequeue(out message);
+        }
+    });
+    WaitHandle.WaitAll(new WaitHandle[] { readReady2.WaitHandle });
+    readTimer2.Start();
+    Task.WaitAll(readTask2);
+
+    readTimer2.Stop();
+
+    mas_cp[k] = readTimer2.ElapsedMilliseconds;
+}
+
+long[] mas_qp = new long[10];
+for (int k = 0; k < 10; k++){
+    Queue<Message> queue3 = new Queue<Message>();
+
+    for (int i = 0; i < n; i++)
+    {
+        var message = new Message();
+        queue3.Enqueue(message);
+    }
+
+    Stopwatch readTimer3 = new Stopwatch();
+    readTimer3.Start();
+
+    for (int i = 0; i < n; i++)
+    {
+        queue3.Dequeue();
+    }
+    readTimer3.Stop();
+    mas_qp[k] = readTimer3.ElapsedMilliseconds;
+
+}
+
+#!csharp
+
+#r "nuget:ScottPlot, 5.0.36"
+using Microsoft.DotNet.Interactive.Formatting;
+Formatter.Register(typeof(ScottPlot.Plot), (p, w) => 
+    w.Write(((ScottPlot.Plot)p).GetImageHtml(400, 300)), HtmlFormatter.MimeType);
+
+#!csharp
+
+Console.WriteLine("Запись и чтение");
+double average = mas_b.Average();
+Console.WriteLine($"Среднее значение: {average}");
+// create sample data
+int[] dataX = new int[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+var dataY = mas_b;
+
+// plot the data
+ScottPlot.Plot plt = new();
+plt.Add.Scatter(dataX, dataY);
+plt.Title("BlockingCollection");
+// display the plot
+plt
+
+#!csharp
+
+Console.WriteLine("Обработка");
+double average = mas_bp.Average();
+Console.WriteLine($"Среднее значение: {average}");
+// create sample data
+int[] dataX = new int[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+var dataY = mas_bp;
+
+// plot the data
+ScottPlot.Plot plt = new();
+plt.Add.Scatter(dataX, dataY);
+plt.Title("BlockingCollection");
+// display the plot
+plt
+
+#!csharp
+
+Console.WriteLine("Запись и чтение");
+double average = mas_c.Average();
+Console.WriteLine($"Среднее значение: {average}");
+// create sample data
+int[] dataX = new int[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+var dataY = mas_c;
+
+// plot the data
+ScottPlot.Plot plt = new();
+plt.Add.Scatter(dataX, dataY);
+plt.Title("ConcurrentQueue");
+// display the plot
+plt
+
+#!csharp
+
+Console.WriteLine("Обработка");
+double average = mas_cp.Average();
+Console.WriteLine($"Среднее значение: {average}");
+// create sample data
+int[] dataX = new int[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+var dataY = mas_cp;
+
+// plot the data
+ScottPlot.Plot plt = new();
+plt.Add.Scatter(dataX, dataY);
+plt.Title("ConcurrentQueue");
+// display the plot
+plt
+
+#!csharp
+
+Console.WriteLine("Запись и чтение");
+double average = mas_q.Average();
+Console.WriteLine($"Среднее значение: {average}");
+int[] dataX = new int[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+var dataY = mas_q;
+
+// plot the data
+ScottPlot.Plot plt = new();
+plt.Add.Scatter(dataX, dataY);
+plt.Title("Queue");
+// display the plot
+plt
+
+#!csharp
+
+Console.WriteLine("Обработка");
+double average = mas_qp.Average();
+Console.WriteLine($"Среднее значение: {average}");
+int[] dataX = new int[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+var dataY = mas_qp;
+
+// plot the data
+ScottPlot.Plot plt = new();
+plt.Add.Scatter(dataX, dataY);
+plt.Title("Queue");
+// display the plot
+plt
 
 #!markdown
 
 ## Вывод
+
+Непотокобезопасная очередь заниемет наименьшее время обработки объектов, чтения и записи.
+
+Лучшей потоко-безопасной коллекцией для выполнения интенсивной обработки входящих сообщений оказалась
+ConcurrentQueue.
+
+Обработка объектов через BlockingCollection занимает больше всего времени.
