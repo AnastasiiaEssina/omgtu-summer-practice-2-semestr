@@ -90,6 +90,7 @@ class DefiniteIntegral
         }
         return sum;
     }
+    
 }
 
 #!csharp
@@ -97,12 +98,142 @@ class DefiniteIntegral
 #r "nuget: xunit, 2.8.1"
 
 using Xunit;
+using System.Diagnostics;
 
-var X = (double x) => x;
 var SIN = (double x) => Math.Sin(x);
 
-Assert.Equal(0, DefiniteIntegral.Solve(-1, 1, X, 1e-4, 2), 1e-4);
+//оптимальный шаг
+double[] steps = [1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6];
 
-Assert.Equal(0, DefiniteIntegral.Solve(-1, 1, SIN, 1e-5, 8), 1e-4);
+List<long> time = new List<long>();
+long min_time;
+double best_step;
+Stopwatch stopWatch = new Stopwatch();
+for (int i = 0; i < steps.Length; i++){
+    stopWatch.Reset();
+    stopWatch.Start();
+    
+    try{
+        Assert.Equal(0, DefiniteIntegral.Solve(-100, 100, SIN, steps[i], 10), 1e-4);
+        stopWatch.Stop();
+        time.Add(stopWatch.ElapsedTicks);
+    }
+    catch
+    {
+        stopWatch.Stop();
+        time.Add(int.MaxValue);
+    }
+}
+min_time = time.Min();
+int index = time.FindIndex(a => a == min_time);
+//Console.WriteLine($" {index}");
+Console.WriteLine($"Оптимальный шаг 1e-{index + 1}");
 
-Assert.Equal(10, DefiniteIntegral.Solve(0, 5, X, 1e-6, 8), 1e-5);
+#!csharp
+
+// оптимальное число потоков
+
+double[] mn_time = new double[20];
+
+for (int i = 0; i < mn_time.Length; i++)
+{
+    long[] find_average = new long[5];
+    double average = 0;
+    for (int j = 0; j < find_average.Length; j++)
+    {
+        stopWatch.Reset();
+        stopWatch.Start();
+        DefiniteIntegral.Solve(-100, 100, SIN, 1e-5, i+1);
+        stopWatch.Stop();
+        find_average[j] = stopWatch.ElapsedTicks;
+    }
+    average = find_average.Average();
+    mn_time[i]=average;
+}
+double thread_time = mn_time.Min();
+int number_of_threads = Array.IndexOf(mn_time, thread_time);
+Console.WriteLine($"Оптимальное число потоков {number_of_threads+1}");
+Console.WriteLine($"Время выполнения {thread_time}");
+
+
+#!csharp
+
+// Install the ScottPlot NuGet package
+#r "nuget:ScottPlot, 5.0.36"
+
+// Setup a custom formatter to display plots as images
+using Microsoft.DotNet.Interactive.Formatting;
+Formatter.Register(typeof(ScottPlot.Plot), (p, w) => 
+    w.Write(((ScottPlot.Plot)p).GetImageHtml(400, 300)), HtmlFormatter.MimeType);
+    
+// create sample data
+double[] dataX = mn_time ;
+double[] dataY = new double[mn_time.Length] ;
+for (int i = 0; i < dataY.Length; i++){dataY[i] = i+1;}
+// plot the data
+ScottPlot.Plot plt = new();
+plt.Add.Scatter(dataX, dataY);
+plt.XLabel("Duration");
+plt.YLabel("Threads numbers");
+
+// display the plot
+plt
+
+#!csharp
+
+class TrapezoidalRule{
+    public static double Solve(double a, double b, Func<double, double> function, double step){
+        double summ = 0;
+        double current_posx = a;
+        int dist_count = Convert.ToInt32(Math.Ceiling((b-a)/step));
+        for (int i = 0; i <= dist_count; i++){
+
+            current_posx = a + step * i;
+
+            double p = Math.Abs(((function(current_posx)+function(current_posx+step))*step)/2.0);
+            summ += p;
+
+        }
+        return summ;
+    }
+}
+
+#!csharp
+
+//однопоточный вариант
+long[] no_threads_average = new long[5];
+double no_threads;
+for (int i = 0; i < no_threads_average.Length; i++)
+{
+    stopWatch.Reset();
+    stopWatch.Start();
+    TrapezoidalRule.Solve(-100, 100, SIN, 1e-5);
+    stopWatch.Stop();
+    no_threads_average[i] = stopWatch.ElapsedTicks;
+}
+no_threads = no_threads_average.Average();
+Console.WriteLine(no_threads);
+
+
+
+#!csharp
+
+//вычисление разницы в процентах
+double d;
+d = (no_threads-thread_time)*100 / no_threads;
+Console.WriteLine(d);
+
+#!markdown
+
+Summary
+
+Размер шага: 1е-5
+
+Оптимальное количество потоков: 12
+
+Время работы программы с потоками: ~ 485781.6 
+
+Время работы обычной программы: ~ 2665557.2
+
+Разница в процентах: ~ 82%
+
