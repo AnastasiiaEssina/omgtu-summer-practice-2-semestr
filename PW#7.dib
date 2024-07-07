@@ -17,9 +17,187 @@
 
 #!csharp
 
+using System;
+using System.Collections.Generic;
+using System.Threading;
+
 public interface ICommand
 {
     void Execute();
+}
+
+public class Number_One : ICommand
+{
+    public void Execute()
+    {
+        Console.WriteLine("NUMBER 1!");
+    }
+}
+
+public class Number_Two : ICommand
+{
+    public void Execute()
+    {
+        Console.WriteLine("NuMbEr 2!");
+    }
+}
+
+public class Number_Three : ICommand
+{
+    public void Execute()
+    {
+        Console.WriteLine("number 3!");
+    }
+}
+
+public class Number_Four : ICommand
+{
+    public void Execute()
+    {
+        Console.WriteLine("Number 4 ");
+    }
+}
+
+// Команда HardStop
+public class HardStopCommand : ICommand
+{
+    private readonly Thread _targetThread;
+
+    public HardStopCommand(Thread targetThread)
+    {
+        _targetThread = targetThread;
+    }
+
+    public void Execute()
+    {
+        if (_targetThread == Thread.CurrentThread)
+        {
+            // Немедленное завершение потока
+            _targetThread.Abort();
+        }
+        else
+        {
+            throw new InvalidOperationException("Команда HardStop может быть выполнена только в целевом потоке.");
+        }
+    }
+}
+
+// Команда SoftStop
+public class SoftStopCommand : ICommand
+{
+    private readonly Thread _targetThread;
+
+    public SoftStopCommand(Thread targetThread)
+    {
+        _targetThread = targetThread;
+    }
+
+    public void Execute()
+    {
+        if (_targetThread == Thread.CurrentThread)
+        {
+            running = false;
+        }
+        else
+        {
+            throw new InvalidOperationException("Команда SoftStop может быть выполнена только в целевом потоке.");
+        }
+    }
+}
+private static bool running = true;
+public class TestCommand : ICommand
+{
+    public void Execute()
+    {
+        Console.WriteLine("Выполнена тестовая команда.");
+    }
+}
+
+public class ServerThread
+{
+    private Thread thread;
+    private static Queue<ICommand> commandQueue = new Queue<ICommand>();
+    
+
+    public ServerThread()
+    {
+        thread = new Thread(Run);
+        thread.Start();
+    }
+
+    private void Run()
+    {
+        while (running)
+        {
+            if (commandQueue.Count > 0)
+            {
+                try
+                {
+                    commandQueue.Dequeue().Execute();
+                }
+                catch (ThreadAbortException)
+                {
+                    Console.WriteLine("Поток остановлен.");
+                }
+            }
+            else
+            {
+                Thread.Sleep(1000);
+            }
+        }
+    }
+
+    public void AddCommand(ICommand command)
+    {
+        lock (commandQueue)
+        {
+            commandQueue.Enqueue(command);
+        }
+    }
+
+    // Методы для запуска команд HardStop и SoftStop
+    public void HardStop()
+    {
+        AddCommand(new HardStopCommand(thread));
+    }
+
+    public void SoftStop()
+    {
+        AddCommand(new SoftStopCommand(thread));
+    }
+}
+
+public class Program
+{
+    public static void Main()
+    {
+        ServerThread serverThread = new ServerThread();
+
+        serverThread.AddCommand(new Number_One());
+        serverThread.AddCommand(new Number_Two());
+        serverThread.AddCommand(new Number_Three());
+        serverThread.AddCommand(new Number_Four());
+
+        Console.WriteLine("Запуск команды HardStop...");
+        serverThread.HardStop();
+
+        Thread.Sleep(2000);
+
+        serverThread = new ServerThread();
+
+        serverThread.AddCommand(new Number_One());
+        serverThread.AddCommand(new Number_Two());
+        serverThread.AddCommand(new Number_Three());
+        serverThread.AddCommand(new Number_Four());
+
+        Console.WriteLine("Запуск команды SoftStop...");
+        serverThread.SoftStop();
+
+        Thread.Sleep(2000);
+
+        Console.WriteLine("Тестирование завершено.");
+        
+    }
 }
 
 #!markdown
